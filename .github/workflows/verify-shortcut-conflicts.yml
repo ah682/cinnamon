@@ -1,0 +1,217 @@
+name: Verify shortcut conflicts
+
+on:
+  push:
+    branches: [verify-shortcut-conflicts]
+
+permissions:
+  contents: read
+
+jobs:
+  gtk-reproduction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: linuxmint/cinnamon
+          ref: c6313408f90e4eec62ec7cd3b7e8f0e90d2713e0
+          path: cinnamon-current
+      - uses: actions/checkout@v4
+        with:
+          repository: linuxmint/cinnamon-desktop
+          ref: 6c6c48d7c87359b34b5812486d364fde3ed730ed
+          path: test-deps/cinnamon-desktop
+      - uses: actions/checkout@v4
+        with:
+          repository: linuxmint/python3-xapp
+          ref: 5b178b9bbc7c54d9fade6bf59491cd6d117f7fd0
+          path: test-deps/python3-xapp
+      - name: Install GTK test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-gi python3-gi-cairo python3-setproctitle gir1.2-gtk-3.0 gir1.2-xapp-1.0 gir1.2-gsound-1.0 xvfb xauth xdotool
+      - name: Reproduce shortcut reassignment in the Sound settings window
+        run: |
+          mkdir -p research/cinnamon-shortcut-conflict
+          cat > research/cinnamon-shortcut-conflict/reproduce.py <<'PY'
+          #!/usr/bin/python3
+          """Exercise the stock Sound settings window on an isolated X display.
+
+          Run with the workspace's test dependencies:
+          PATH=/tmp/cinnamon-test-runtime/usr/bin:$PATH xvfb-run -a \
+              dbus-run-session -- python3 research/cinnamon-shortcut-conflict/reproduce.py
+
+          This uses current Cinnamon's real settings classes, schemas, and applet defaults.
+          Only storage locations and the process's GSettings backend are isolated.
+          """
+
+          import argparse
+          import copy
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import subprocess
+          import sys
+          import tempfile
+          from unittest.mock import patch
+
+          WORKSPACE = Path(__file__).resolve().parents[2]
+          REPO = WORKSPACE / "cinnamon-current"
+          DEPS = WORKSPACE / "test-deps"
+          parser = argparse.ArgumentParser()
+          parser.add_argument("--session")
+          parser.add_argument("--answer", choices=["no", "yes"], default="no")
+          parser.add_argument("--output", default="before")
+          args = parser.parse_args()
+
+          if args.session is None:
+              with tempfile.TemporaryDirectory(prefix="cinnamon-shortcut-") as directory:
+                  root = Path(directory)
+                  schemas = root / "schemas"
+                  schemas.mkdir()
+                  shutil.copy(REPO / "data/org.cinnamon.gschema.xml", schemas)
+                  for name in ("keybindings", "keybindings.media-keys", "keybindings.wm"):
+                      source = DEPS / "cinnamon-desktop/schemas" / f"org.cinnamon.desktop.{name}.gschema.xml.in"
+                      (schemas / source.name[:-3]).write_text(source.read_text())
+                  subprocess.run(["glib-compile-schemas", "--strict", str(schemas)], check=True)
+
+                  for uuid in ("sound@cinnamon.org", "network@cinnamon.org"):
+                      source = REPO / "files/usr/share/cinnamon/applets" / uuid
+                      destination = root / ".local/share/cinnamon/applets" / uuid
+                      shutil.copytree(source, destination)
+                      template = (source / "settings-schema.json").read_bytes()
+                      settings = json.loads(template)
+                      # Cinnamon's _doInstall copies each schema default into its value.
+                      for item in settings.values():
+                          if isinstance(item, dict) and "default" in item:
+                              item["value"] = copy.deepcopy(item["default"])
+                      settings["__md5__"] = hashlib.md5(template).hexdigest()
+                      config = root / ".config/cinnamon/spices" / uuid / f"{uuid}.json"
+                      config.parent.mkdir(parents=True)
+                      config.write_text(json.dumps(settings, indent=4))
+
+                  env = dict(os.environ, GSETTINGS_BACKEND="memory", GSETTINGS_SCHEMA_DIR=str(schemas),
+                             XDG_SESSION_TYPE="x11", GDK_BACKEND="x11")
+                  completed = subprocess.run([sys.executable, __file__, "--session", directory,
+                                              "--answer", args.answer, "--output", args.output], env=env)
+                  sys.exit(completed.returncode)
+
+          root = Path(args.session)
+          sys.path[:0] = [str(DEPS / "python3-xapp"), "/tmp/cinnamon-test-runtime/usr/lib/python3/dist-packages",
+                          str(REPO / "files/usr/share/cinnamon/cinnamon-settings")]
+
+          import gi
+          gi.require_version("Gtk", "3.0")
+          gi.require_version("Gdk", "3.0")
+          gi.require_version("XApp", "1.0")
+          from gi.repository import Gdk, Gio, GLib, Gtk
+
+          with patch.object(Path, "home", return_value=root):
+              from bin import KeybindingTable
+              from bin import JsonSettingsWidgets
+              spec = importlib.util.spec_from_file_location("xlet_settings", REPO / "files/usr/share/cinnamon/cinnamon-settings/xlet-settings.py")
+              xlet = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(xlet)
+              xlet.home = str(root)
+              xlet.settings_dir = str(root / ".config/cinnamon/spices")
+
+              settings = Gio.Settings.new("org.cinnamon")
+              settings.set_strv("enabled-applets", ["panel1:right:0:sound@cinnamon.org:1", "panel1:right:1:network@cinnamon.org:2"])
+              settings.set_strv("enabled-desklets", [])
+              settings.set_strv("enabled-extensions", [])
+              window = xlet.MainWindow(argparse.Namespace(type="applet", uuid="sound@cinnamon.org", id=None, tab=None))
+              table = KeybindingTable.get_default()
+              sound = table.lookup_json_keybinding("sound@cinnamon.org", "sound@cinnamon.org", "keyOpen")
+              network = table.lookup_json_keybinding("network@cinnamon.org", "network@cinnamon.org", "keyOpen")
+              assert sound is not None and network is not None
+              print("Stock action labels:", repr(sound.label), repr(network.label), flush=True)
+              print("Initial shortcuts:", sound.entries, network.entries, flush=True)
+
+              def walk(widget):
+                  yield widget
+                  if isinstance(widget, Gtk.Container):
+                      for child in widget.get_children():
+                          yield from walk(child)
+
+              widget = next(w for w in walk(window.window)
+                            if isinstance(w, JsonSettingsWidgets.JSONSettingsKeybinding) and w.key == "keyOpen")
+              results = {"dialogs": [], "signal": False}
+              output = Path(__file__).parent
+
+              def screenshot(widget, suffix):
+                  width, height = widget.get_size()
+                  pixbuf = Gdk.pixbuf_get_from_window(widget.get_window(), 0, 0, width, height)
+                  pixbuf.savev(str(output / f"{args.output}-{suffix}.png"), "png", [], [])
+
+              def watch_dialogs():
+                  for dialog in Gtk.Window.list_toplevels():
+                      if isinstance(dialog, Gtk.MessageDialog) and dialog.get_visible():
+                          results["dialogs"].append(dialog.props.text)
+                          screenshot(dialog, "dialog")
+                          dialog.response(Gtk.ResponseType.NO if args.answer == "no" else Gtk.ResponseType.YES)
+                  return True
+
+              def finish():
+                  results["sound"] = json.loads(Path(sound.schema).read_text())["keyOpen"]["value"]
+                  results["network"] = json.loads(Path(network.schema).read_text())["keyOpen"]["value"]
+                  screenshot(window.window, "settings")
+                  print(json.dumps(results, indent=2), flush=True)
+                  (output / f"{args.output}.json").write_text(json.dumps(results, indent=2))
+                  Gtk.main_quit()
+                  return False
+
+              def edited(*unused):
+                  results["signal"] = True
+                  GLib.timeout_add(250, finish)
+
+              widget.buttons[0].connect_after("accel-edited", edited)
+
+              def press_shortcut():
+                  subprocess.Popen(["xdotool", "key", "--clearmodifiers", "shift+super+n"])
+                  return False
+
+              def click_shortcut():
+                  button = widget.buttons[0]
+                  x, y = button.translate_coordinates(window.window, 0, 0)
+                  _ok, origin_x, origin_y = window.window.get_window().get_origin()
+                  allocation = button.get_allocation()
+                  # A real pointer click starts GTK's shortcut editor, followed by real X keys.
+                  subprocess.Popen(["xdotool", "mousemove", str(origin_x + x + allocation.width // 2),
+                                    str(origin_y + y + allocation.height // 2), "click", "1"])
+                  GLib.timeout_add(300, press_shortcut)
+                  return False
+
+              GLib.timeout_add(100, watch_dialogs)
+              GLib.timeout_add(500, click_shortcut)
+              GLib.timeout_add_seconds(10, finish)
+              Gtk.main()
+
+              assert results["signal"], "The GUI shortcut editor did not receive the key combination"
+              assert len(results["dialogs"]) == 1, "The existing Network shortcut must prompt before reassignment"
+              if args.answer == "no":
+                  assert results["sound"] == "<Shift><Super>s"
+                  assert results["network"] == "<Shift><Super>n"
+              else:
+                  assert results["sound"].lower().endswith("n")
+                  assert results["network"].replace(":", "") == ""
+              print("PASS: the real GUI detected the conflict and honored the response", flush=True)
+          PY
+          set +e
+          xvfb-run -a dbus-run-session -- /usr/bin/python3 research/cinnamon-shortcut-conflict/reproduce.py > research/cinnamon-shortcut-conflict/before.log 2>&1
+          result=$?
+          cat research/cinnamon-shortcut-conflict/before.log
+          {
+            printf '```text\n'
+            cat research/cinnamon-shortcut-conflict/before.log
+            printf '\n```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shortcut-conflict-evidence
+          path: research/cinnamon-shortcut-conflict/
