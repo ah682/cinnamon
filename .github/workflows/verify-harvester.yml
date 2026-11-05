@@ -18,11 +18,12 @@ jobs:
       - name: Install Python runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi python3-pil python3-requests libglib2.0-bin gettext
+          sudo apt-get install -y python3-gi python3-pil python3-requests gir1.2-gtk-3.0 libglib2.0-bin gettext
       - name: Regression tests
         run: /usr/bin/python3 tests/test-harvester.py -v
       - name: Reproduce real ENOSPC before the fix
         run: |
+          git fetch --no-tags --depth=1 origin 946e5a9c7c8c599e59a83c9089387db4f6708454
           git worktree add --detach "$RUNNER_TEMP/cinnamon-before" 946e5a9c7c8c599e59a83c9089387db4f6708454
           /usr/bin/python3 tests/full-disk-probe.py --repo "$RUNNER_TEMP/cinnamon-before" --expect-damaged
       - name: Verify installed files survive real ENOSPC with the fix
