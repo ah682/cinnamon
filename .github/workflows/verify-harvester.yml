@@ -1,0 +1,33 @@
+name: Verify failed Spice updates
+
+on:
+  push:
+    branches: [verify-harvester-failure-20261105]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+      - name: Install Python runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi python3-pil python3-requests libglib2.0-bin gettext
+      - name: Regression tests
+        run: /usr/bin/python3 tests/test-harvester.py -v
+      - name: Reproduce real ENOSPC before the fix
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/cinnamon-before" 946e5a9c7c8c599e59a83c9089387db4f6708454
+          /usr/bin/python3 tests/full-disk-probe.py --repo "$RUNNER_TEMP/cinnamon-before" --expect-damaged
+      - name: Verify installed files survive real ENOSPC with the fix
+        run: /usr/bin/python3 tests/full-disk-probe.py --repo "$GITHUB_WORKSPACE"
+      - name: Python compilation and whitespace
+        run: |
+          /usr/bin/python3 -m py_compile python3/cinnamon/harvester.py tests/test-harvester.py
+          git diff --check 946e5a9c7c8c599e59a83c9089387db4f6708454
