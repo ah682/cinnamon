@@ -5,6 +5,7 @@
     const AppletManager = imports.ui.appletManager;
     const SearchProviderManager = imports.ui.searchProviderManager;
     const St = imports.gi.St;
+    const Atk = imports.gi.Atk;
     const definition = AppletManager.definitions.find(item => item.uuid === 'menu@cinnamon.org');
     const menu = definition && definition.applet;
     if (!menu)
@@ -51,7 +52,14 @@
                         'Description style differs from application entries');
                 }
                 const accessibleName = expected === null ? 'Project' : `Project. ${expected}`;
-                check(button.actor.get_accessible().accessible_name === accessibleName, 'Accessible name differs');
+                const accessible = button.actor.get_accessible();
+                let actualName = accessible.accessible_name;
+                if (actualName === null) {
+                    const relation = accessible.ref_relation_set().get_relation_by_type(Atk.RelationType.LABELLED_BY);
+                    if (relation)
+                        actualName = relation.get_target().map(label => label.accessible_name).join(' ');
+                }
+                check(actualName === accessibleName, 'Accessible name differs');
                 results.push({ name, passed: true });
             } catch (error) {
                 results.push({ name, passed: false, error: error.message });
