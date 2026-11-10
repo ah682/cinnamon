@@ -163,6 +163,8 @@ with tempfile.TemporaryDirectory(prefix='cinnamon-menu-test-') as directory:
                         if any(label in line for line in speech) and time.monotonic() - speech_changed_at >= 1:
                             break
                         time.sleep(0.25)
+                    else:
+                        raise RuntimeError(f'Orca speech did not settle for {label}: {speech}')
                     assert any(label in line for line in speech), output[-8000:]
                     includes_description = any('Project directory' in line for line in speech)
                     assert includes_description == (enabled and not args.expect_failure), speech
