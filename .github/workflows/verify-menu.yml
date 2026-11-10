@@ -23,6 +23,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y python-is-python3 python3-gi xvfb dbus-x11 mesa-utils xwayland orca speech-dispatcher-espeak-ng pulseaudio pulseaudio-utils
+          useradd --create-home --shell /bin/bash cinnamon-test
       - name: Install Cinnamon runtime and matching dependencies
         uses: linuxmint/github-actions/install-deps@master
         with:
@@ -48,13 +49,13 @@ jobs:
           mkdir -p /run/dbus
           dbus-daemon --system --fork --nopidfile
       - name: Reproduce missing descriptions
-        run: xvfb-run -a -s '-screen 0 1280x800x24 +extension GLX' dbus-run-session -- /usr/bin/python3 tests/run-native-test.py --backend ${{ matrix.backend }} --screen-reader --expect-failure
+        run: runuser -u cinnamon-test -- xvfb-run -a -s '-screen 0 1280x800x24 +extension GLX' dbus-run-session -- /usr/bin/python3 tests/run-native-test.py --backend ${{ matrix.backend }} --screen-reader --expect-failure
       - name: Verify the corrected menu
         run: |
           cp /tmp/cinnamon-menu-session.log /tmp/cinnamon-menu-before.log
           cp /tmp/cinnamon-menu-orca.log /tmp/cinnamon-menu-orca-before.log
           cp /tmp/menu-patched.js /usr/share/cinnamon/applets/menu@cinnamon.org/applet.js
-          xvfb-run -a -s '-screen 0 1280x800x24 +extension GLX' dbus-run-session -- /usr/bin/python3 tests/run-native-test.py --backend ${{ matrix.backend }} --screen-reader
+          runuser -u cinnamon-test -- xvfb-run -a -s '-screen 0 1280x800x24 +extension GLX' dbus-run-session -- /usr/bin/python3 tests/run-native-test.py --backend ${{ matrix.backend }} --screen-reader
       - name: Preserve session log
         if: always()
         uses: actions/upload-artifact@v6

@@ -143,12 +143,17 @@ with tempfile.TemporaryDirectory(prefix='cinnamon-menu-test-') as directory:
                     })()'''.replace('ENABLED', json.dumps(enabled)).replace('LABEL', json.dumps(label)))
                     deadline = time.monotonic() + 15
                     speech = []
+                    previous_speech = []
+                    speech_changed_at = time.monotonic()
                     while time.monotonic() < deadline:
                         with orca_log.open() as stream:
                             stream.seek(offset)
                             output = stream.read()
                         speech = [line for line in output.splitlines() if 'SPEECH OUTPUT:' in line]
-                        if any(label in line for line in speech):
+                        if speech != previous_speech:
+                            speech_changed_at = time.monotonic()
+                            previous_speech = speech
+                        if any(label in line for line in speech) and time.monotonic() - speech_changed_at >= 1:
                             break
                         time.sleep(0.25)
                     assert any(label in line for line in speech), output[-8000:]
