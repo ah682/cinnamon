@@ -40,8 +40,7 @@ jobs:
         run: |
           cp -a files/usr/share/cinnamon/applets/menu@cinnamon.org/. /usr/share/cinnamon/applets/menu@cinnamon.org/
           cp /usr/share/cinnamon/applets/menu@cinnamon.org/applet.js /tmp/menu-patched.js
-          git fetch --no-tags --depth=1 origin 5c5371457fea804ad6b170b692ee0dffbe425fec
-          git show 5c5371457fea804ad6b170b692ee0dffbe425fec:files/usr/share/cinnamon/applets/menu@cinnamon.org/applet.js > /usr/share/cinnamon/applets/menu@cinnamon.org/applet.js
+          wget -q https://raw.githubusercontent.com/linuxmint/cinnamon/5c5371457fea804ad6b170b692ee0dffbe425fec/files/usr/share/cinnamon/applets/menu@cinnamon.org/applet.js -O /usr/share/cinnamon/applets/menu@cinnamon.org/applet.js
           mkdir -p /run/dbus
           dbus-daemon --system --fork --nopidfile
       - name: Reproduce missing descriptions
