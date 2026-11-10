@@ -30,7 +30,8 @@
         const ResultButton = menu._searchProviderButtons[0].constructor;
 
         for (const [name, showDescription, description, expected] of [
-            ['description enabled', true, '/home/example/projects/example-project', '/home/example/projects/example-project'],
+            ['description enabled', true,
+                '/home/example/projects/example-project', '/home/example/projects/example-project'],
             ['description disabled', false, '/home/example/projects/example-project', null],
             ['empty description', true, '', null],
             ['missing description', true, undefined, null],
