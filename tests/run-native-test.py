@@ -79,6 +79,12 @@ with tempfile.TemporaryDirectory(prefix='cinnamon-menu-test-') as directory:
                 print('All seven native menu checks passed', flush=True)
 
             if args.screen_reader:
+                if args.backend == 'wayland':
+                    for name in ('DISPLAY', 'XAUTHORITY', 'WAYLAND_DISPLAY'):
+                        value = evaluate(f"imports.gi.GLib.getenv('{name}')")
+                        if value:
+                            env[name] = value
+
                 def start(command):
                     process = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT)
                     helpers.append(process)
@@ -111,6 +117,7 @@ with tempfile.TemporaryDirectory(prefix='cinnamon-menu-test-') as directory:
                 assert (root / 'speech.sock').exists(), 'Speech Dispatcher did not start'
 
                 orca_log = Path('/tmp/cinnamon-menu-orca.log')
+                orca_log.unlink(missing_ok=True)
                 orca = start(['orca', '--debug-file', str(orca_log), '--disable=braille', '--enable=speech'])
                 deadline = time.monotonic() + 30
                 while time.monotonic() < deadline:
