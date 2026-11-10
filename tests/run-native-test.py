@@ -19,7 +19,8 @@ repo = Path.cwd()
 with tempfile.TemporaryDirectory(prefix='cinnamon-menu-test-') as directory:
     root = Path(directory)
     env = dict(os.environ, GSETTINGS_BACKEND='keyfile', LIBGL_ALWAYS_SOFTWARE='1',
-               XDG_CURRENT_DESKTOP='X-Cinnamon', CINNAMON_SOFTWARE_RENDERING='1')
+               XDG_CURRENT_DESKTOP='X-Cinnamon', XDG_SESSION_TYPE='x11',
+               CINNAMON_SOFTWARE_RENDERING='1')
     for name in ('DATA', 'CONFIG', 'CACHE', 'STATE'):
         env[f'XDG_{name}_HOME'] = str(root / name.lower())
     runtime = root / 'runtime'
