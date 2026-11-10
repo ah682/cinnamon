@@ -33,18 +33,18 @@ with tempfile.TemporaryDirectory(prefix='cinnamon-menu-test-') as directory:
     with open('/tmp/cinnamon-menu-session.log', 'w') as log:
         cinnamon = subprocess.Popen(['cinnamon', '--replace'], env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
-            proxy = Gio.DBusProxy.new_for_bus_sync(Gio.BusType.SESSION,
-                Gio.DBusProxyFlags.DO_NOT_AUTO_START, None,
-                'org.Cinnamon', '/org/Cinnamon', 'org.Cinnamon', None)
+            connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
             def evaluate(code):
-                reply = proxy.call_sync('Eval', GLib.Variant('(s)', (code,)),
+                reply = connection.call_sync('org.Cinnamon', '/org/Cinnamon', 'org.Cinnamon',
+                    'Eval', GLib.Variant('(s)', (code,)), GLib.VariantType.new('(bs)'),
                     Gio.DBusCallFlags.NONE, 5000, None).unpack()
                 if not reply[0]:
                     raise RuntimeError(f'Cinnamon Eval failed: {reply[1]}')
                 return json.loads(reply[1]) if reply[1] else None
 
             deadline = time.monotonic() + 75
+            last_error = None
             while time.monotonic() < deadline:
                 if cinnamon.poll() is not None:
                     raise RuntimeError(f'Cinnamon exited with {cinnamon.returncode}')
@@ -53,11 +53,11 @@ with tempfile.TemporaryDirectory(prefix='cinnamon-menu-test-') as directory:
                         "imports.ui.appletManager.definitions.some(d => d.uuid === 'menu@cinnamon.org' && d.applet)")
                     if ready:
                         break
-                except (GLib.Error, RuntimeError):
-                    pass
+                except (GLib.Error, RuntimeError) as error:
+                    last_error = str(error)
                 time.sleep(0.25)
             else:
-                raise RuntimeError('Menu did not finish loading')
+                raise RuntimeError(f'Menu did not finish loading; last error: {last_error}')
 
             script = repo / 'tests/interactive/menu-search-provider-descriptions.js'
             results = evaluate(script.read_text())
