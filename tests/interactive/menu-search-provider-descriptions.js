@@ -1,4 +1,6 @@
-// Run through org.Cinnamon.Eval in an isolated Cinnamon session with the menu applet enabled.
+// Run in an isolated Cinnamon session with the menu applet enabled:
+// gdbus call --session --dest org.Cinnamon --object-path /org/Cinnamon \
+//     --method org.Cinnamon.Eval "$(cat tests/interactive/menu-search-provider-descriptions.js)"
 (() => {
     const AppletManager = imports.ui.appletManager;
     const SearchProviderManager = imports.ui.searchProviderManager;
@@ -49,7 +51,7 @@
                         'Description style differs from application entries');
                 }
                 const accessibleName = expected === null ? 'Project' : `Project. ${expected}`;
-                check(button.actor.get_accessible().get_name() === accessibleName, 'Accessible name differs');
+                check(button.actor.get_accessible().accessible_name === accessibleName, 'Accessible name differs');
                 results.push({ name, passed: true });
             } catch (error) {
                 results.push({ name, passed: false, error: error.message });

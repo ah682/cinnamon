@@ -39,13 +39,21 @@ jobs:
       - name: Load the menu from the checked-out source
         run: |
           cp -a files/usr/share/cinnamon/applets/menu@cinnamon.org/. /usr/share/cinnamon/applets/menu@cinnamon.org/
+          cp /usr/share/cinnamon/applets/menu@cinnamon.org/applet.js /tmp/menu-patched.js
+          git fetch --no-tags --depth=1 origin 5c5371457fea804ad6b170b692ee0dffbe425fec
+          git show 5c5371457fea804ad6b170b692ee0dffbe425fec:files/usr/share/cinnamon/applets/menu@cinnamon.org/applet.js > /usr/share/cinnamon/applets/menu@cinnamon.org/applet.js
           mkdir -p /run/dbus
           dbus-daemon --system --fork --nopidfile
       - name: Reproduce missing descriptions
         run: xvfb-run -a -s '-screen 0 1280x800x24 +extension GLX' dbus-run-session -- /usr/bin/python3 tests/run-native-test.py --expect-failure
+      - name: Verify the corrected menu
+        run: |
+          cp /tmp/cinnamon-menu-session.log /tmp/cinnamon-menu-before.log
+          cp /tmp/menu-patched.js /usr/share/cinnamon/applets/menu@cinnamon.org/applet.js
+          xvfb-run -a -s '-screen 0 1280x800x24 +extension GLX' dbus-run-session -- /usr/bin/python3 tests/run-native-test.py
       - name: Preserve session log
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: cinnamon-menu-session
-          path: /tmp/cinnamon-menu-session.log
+          path: /tmp/cinnamon-menu-*.log
