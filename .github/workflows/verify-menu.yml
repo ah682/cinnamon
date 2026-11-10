@@ -1,0 +1,51 @@
+name: Verify menu search descriptions
+
+on:
+  push:
+    branches: [verify-menu-descriptions-20261110]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-menu:
+    runs-on: ubuntu-24.04
+    container:
+      image: linuxmintd/lmde7-amd64
+    steps:
+      - uses: actions/checkout@v6
+      - name: Prepare runtime
+        run: |
+          apt-get update
+          apt-get install -y python-is-python3 python3-gi xvfb dbus-x11 mesa-utils
+      - name: Install Cinnamon runtime and matching dependencies
+        uses: linuxmint/github-actions/install-deps@master
+        with:
+          mint_version: lmde7
+          dependencies: >
+            linuxmint/cinnamon-control-center,
+            linuxmint/cinnamon-desktop,
+            linuxmint/cinnamon-menus,
+            linuxmint/cinnamon-session,
+            linuxmint/cinnamon-settings-daemon,
+            linuxmint/cinnamon-translations,
+            linuxmint/cjs,
+            linuxmint/muffin,
+            linuxmint/nemo,
+            linuxmint/xapp,
+            linuxmint/xdg-desktop-portal-xapp,
+            linuxmint/cinnamon
+      - name: Load the menu from the checked-out source
+        run: |
+          cp -a files/usr/share/cinnamon/applets/menu@cinnamon.org/. /usr/share/cinnamon/applets/menu@cinnamon.org/
+          mkdir -p /run/dbus
+          dbus-daemon --system --fork --nopidfile
+      - name: Reproduce missing descriptions
+        run: xvfb-run -a -s '-screen 0 1280x800x24 +extension GLX' dbus-run-session -- /usr/bin/python3 tests/run-native-test.py --expect-failure
+      - name: Preserve session log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: cinnamon-menu-session
+          path: /tmp/cinnamon-menu-session.log
